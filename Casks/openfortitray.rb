@@ -1,6 +1,6 @@
 cask "openfortitray" do
-  version "0.1.5"
-  sha256 "672f8c8968458e4eeb643419160a0cdeda9d4130a2bef987950cbe60b2e0d37d"
+  version "0.1.6"
+  sha256 "8d036c555a2cb70f9cdfa3d39e172b90249149ffe228a9cfeb2ab08d3a0c3c9a"
 
   url "https://github.com/savvaskoualis/openfortitray/releases/download/v#{version}/OpenFortiTray-v#{version}.dmg",
       verified: "github.com/savvaskoualis/openfortitray/"
@@ -20,13 +20,15 @@ cask "openfortitray" do
   end
 
   caveats <<~EOS
-    OpenFortiTray installs the menu-bar app, but bringing the VPN tunnel up
-    needs a one-time privileged helper (a root-owned openconnect wrapper and a
-    scoped sudoers rule). Install it once with:
+    Open OpenFortiTray, set your gateway in Settings, and Connect. On the first
+    Connect the app asks for your Mac administrator password once, to install a
+    small root-owned helper (an openconnect wrapper and a scoped sudoers rule)
+    that brings the tunnel up. No separate install step is needed.
+
+    If you prefer to install that helper ahead of time, or the first-run prompt
+    fails, you can run it manually:
 
       curl -fsSL https://raw.githubusercontent.com/savvaskoualis/openfortitray/v#{version}/scripts/install-helper.sh | sudo bash
-
-    Then open OpenFortiTray, set your gateway in Settings, and Connect.
 
     Quit FortiClient and disable it at login before connecting — FortiGate
     allows only one SSL-VPN session per user.
