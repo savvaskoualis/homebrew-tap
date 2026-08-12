@@ -12,6 +12,13 @@ cask "openfortitray" do
 
   app "OpenFortiTray.app"
 
+  # The app is ad-hoc signed but not notarized; strip the download quarantine so
+  # Gatekeeper does not block first launch (no Apple Developer account needed).
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/OpenFortiTray.app"]
+  end
+
   caveats <<~EOS
     OpenFortiTray installs the menu-bar app, but bringing the VPN tunnel up
     needs a one-time privileged helper (a root-owned openconnect wrapper and a
