@@ -1,0 +1,102 @@
+name: Bump openfortitray cask
+
+# Keeps Casks/openfortitray.rb in lockstep with the newest published
+# openfortitray release, WITHOUT a cross-repo token.
+#
+# Why it lives here and not in the app repo: a workflow in savvaskoualis/
+# openfortitray only gets a GITHUB_TOKEN scoped to that repo, so pushing the cask
+# would need a personal access token stored as a secret. Running the bump from
+# the tap instead means the tap's own GITHUB_TOKEN is enough (contents: write
+# below) — no long-lived credential anywhere.
+#
+# Why it matters: the app checks GitHub releases to decide an update exists, but
+# applies it with `brew upgrade --cask`. While the cask lagged a release, the app
+# correctly reported "update available" and brew answered "the latest version is
+# already installed" — a guaranteed no-op that read as a broken updater. Closing
+# that window automatically is the fix.
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub can delay scheduled runs under load, so treat this
+    # as "within the hour", not a deadline. Use the manual trigger to bump at once
+    # right after publishing a release.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  # Lets the app repo poke this workflow (needs a token there), harmless until then.
+  repository_dispatch:
+    types: [openfortitray-released]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-openfortitray
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+
+      - name: Bump cask to the newest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_REPO: savvaskoualis/openfortitray
+          CASK: Casks/openfortitray.rb
+        run: |
+          set -euo pipefail
+
+          tag=$(gh release view --repo "$APP_REPO" --json tagName --jq .tagName)
+          version=${tag#v}
+          # Fail closed on anything that is not a clean vX.Y.Z: the cask's version
+          # string is interpolated into the download URL, and a malformed value
+          # would publish a cask that can never resolve.
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::release tag '$tag' is not a clean vX.Y.Z; refusing to bump"
+            exit 1
+          fi
+
+          current=$(sed -n 's/^  version "\(.*\)"$/\1/p' "$CASK")
+          echo "cask=$current release=$version"
+          if [ "$current" = "$version" ]; then
+            echo "Already at $version — nothing to do."
+            exit 0
+          fi
+
+          dmg="OpenFortiTray-v${version}.dmg"
+          # Take the checksum from the release's own SHA256SUMS rather than
+          # re-hashing a download: it is the artifact CI published and checksummed
+          # on the build runner, so this cannot silently bless a corrupted mirror.
+          tmp=$(mktemp -d)
+          gh release download "$tag" --repo "$APP_REPO" --pattern SHA256SUMS -D "$tmp"
+          sha=$(awk -v f="$dmg" '$2 == f || $2 == "*" f {print $1}' "$tmp/SHA256SUMS")
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::no sha256 for $dmg in the release SHA256SUMS"
+            exit 1
+          fi
+          echo "sha=$sha"
+
+          # Rewrite only the two pinned lines; everything else in the cask (the
+          # caveats, zap stanza, postflight) is hand-maintained and must survive.
+          sed -i \
+            -e "s/^  version \".*\"$/  version \"${version}\"/" \
+            -e "s/^  sha256 \".*\"$/  sha256 \"${sha}\"/" \
+            "$CASK"
+
+          # Confirm the rewrite actually took, so a future formatting change to the
+          # cask cannot turn this into a silent no-op that still reports success.
+          got_v=$(sed -n 's/^  version "\(.*\)"$/\1/p' "$CASK")
+          got_s=$(sed -n 's/^  sha256 "\(.*\)"$/\1/p' "$CASK")
+          if [ "$got_v" != "$version" ] || [ "$got_s" != "$sha" ]; then
+            echo "::error::cask rewrite did not apply (version='$got_v' sha='$got_s')"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CASK"
+          git commit -m "openfortitray ${version}"
+          git push
+          echo "Bumped $current -> $version"
