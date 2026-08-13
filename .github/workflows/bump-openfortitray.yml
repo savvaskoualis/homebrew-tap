@@ -98,5 +98,27 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$CASK"
           git commit -m "openfortitray ${version}"
-          git push
-          echo "Bumped $current -> $version"
+
+          # A plain push is not enough: a scheduled run and a dispatched one can
+          # both be in flight, and the loser's push is rejected with "fetch first"
+          # — which failed the job even though the cask was correct. Worse, if the
+          # loser held the NEWER release the bump was simply dropped until the next
+          # schedule, reopening the lag this workflow exists to close. So: on
+          # rejection, rebase onto the remote and try again; if the remote already
+          # carries the version we wanted, the other run did our job and we stop.
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "Bumped $current -> $version"
+              exit 0
+            fi
+            git fetch origin main
+            remote_v=$(git show origin/main:"$CASK" | sed -n 's/^  version "\(.*\)"$/\1/p')
+            if [ "$remote_v" = "$version" ]; then
+              echo "Another run already published $version — nothing to do."
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); remote is at $remote_v, rebasing"
+            git pull --rebase origin main
+          done
+          echo "::error::could not push the cask bump after 3 attempts"
+          exit 1
