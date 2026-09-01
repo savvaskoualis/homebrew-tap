@@ -1,6 +1,6 @@
 cask "openfortitray" do
-  version "0.2.5"
-  sha256 "033b27f8d1c5c283c398f9b0a2a5edf31cffa8f75d1e2005437ccf4cd7e09e79"
+  version "0.2.6"
+  sha256 "3ecf7aeb935b983d9840f1312cf3c1aab0e5d8bba244da8d50f0c6127a12984b"
 
   url "https://github.com/savvaskoualis/openfortitray/releases/download/v#{version}/OpenFortiTray-v#{version}.dmg",
       verified: "github.com/savvaskoualis/openfortitray/"
